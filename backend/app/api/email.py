@@ -7,6 +7,7 @@ from app.services.url_analyzer import analyze_urls
 from app.services.risk_engine import calculate_risk
 from app.services.header_forensics import analyze_email_headers
 from app.services.email_authentication import extract_authentication_results
+from app.services.ai_phishing_analyzer import analyze_phishing_intent
 
 
 router = APIRouter(
@@ -117,7 +118,20 @@ def analyze_email(email: EmailData):
     ]
 
     # --------------------------------
-    # 7. Base Risk Engine
+    # 7. AI Phishing Analysis
+    # --------------------------------
+
+    phishing_result = analyze_phishing_intent(
+        subject=email.subject,
+        body=email.body
+    )
+
+    phishing_risk = phishing_result[
+        "risk_score"
+    ]
+
+    # --------------------------------
+    # 8. Base Risk Engine
     # --------------------------------
 
     risk_result = calculate_risk(
@@ -130,7 +144,7 @@ def analyze_email(email: EmailData):
     risk_score = risk_result["final_score"]
 
     # --------------------------------
-    # 8. Add Header Forensics Risk
+    # 9. Add Header Forensics Risk
     # --------------------------------
 
     header_risk = header_result.get(
@@ -144,7 +158,7 @@ def analyze_email(email: EmailData):
     )
 
     # --------------------------------
-    # 9. Add Authentication Risk
+    # 10. Add Authentication Risk
     # --------------------------------
 
     risk_score = min(
@@ -153,7 +167,16 @@ def analyze_email(email: EmailData):
     )
 
     # --------------------------------
-    # 10. Final Threat Classification
+    # 11. Add AI Phishing Risk
+    # --------------------------------
+
+    risk_score = min(
+        risk_score + phishing_risk,
+        100
+    )
+
+    # --------------------------------
+    # 12. Final Threat Classification
     # --------------------------------
 
     if risk_score >= 70:
@@ -166,7 +189,7 @@ def analyze_email(email: EmailData):
         threat_level = "LOW"
 
     # --------------------------------
-    # 11. Final Response
+    # 13. Final Response
     # --------------------------------
 
     return {
@@ -188,12 +211,16 @@ def analyze_email(email: EmailData):
 
         "email_authentication": authentication_result,
 
+        "ai_phishing_analysis": phishing_result,
+
         "risk_analysis": {
             **risk_result,
 
             "header_risk": header_risk,
 
             "authentication_risk": authentication_risk,
+
+            "phishing_risk": phishing_risk,
 
             "final_score": risk_score,
 
