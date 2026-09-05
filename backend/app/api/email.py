@@ -9,6 +9,7 @@ from app.services.header_forensics import analyze_email_headers
 from app.services.email_authentication import extract_authentication_results
 from app.services.ai_phishing_analyzer import analyze_phishing_intent
 from app.services.social_engineering_analyzer import analyze_social_engineering
+from app.services.threat_correlation_engine import correlate_threats
 
 
 router = APIRouter(
@@ -193,7 +194,21 @@ def analyze_email(email: EmailData):
     )
 
     # --------------------------------
-    # 14. Final Threat Classification
+    # 14. Threat Correlation
+    # --------------------------------
+
+    correlation_result = correlate_threats(
+        domain_result=domain_result,
+        sender_result=sender_result,
+        url_result=url_result,
+        header_result=header_result,
+        authentication_result=authentication_result,
+        phishing_result=phishing_result,
+        social_engineering_result=social_engineering_result
+    )
+
+    # --------------------------------
+    # 15. Final Threat Classification
     # --------------------------------
 
     if risk_score >= 70:
@@ -204,13 +219,15 @@ def analyze_email(email: EmailData):
         threat_level = "LOW"
 
     # --------------------------------
-    # 15. Final Response
+    # 16. Final Response
     # --------------------------------
 
     return {
         "sender": email.sender,
+
         "risk_score": risk_score,
         "threat_level": threat_level,
+
         "detected_indicators": detected_indicators,
 
         "domain_analysis": domain_result,
@@ -227,12 +244,17 @@ def analyze_email(email: EmailData):
 
         "social_engineering_analysis": social_engineering_result,
 
+        "threat_correlation": correlation_result,
+
         "risk_analysis": {
             **risk_result,
             "header_risk": header_risk,
             "authentication_risk": authentication_risk,
             "phishing_risk": phishing_risk,
             "social_engineering_risk": social_engineering_risk,
+            "correlation_score": correlation_result[
+                "correlation_score"
+            ],
             "final_score": risk_score,
             "threat_level": threat_level
         }
