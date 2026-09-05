@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual Environment
+venv/
+.venv/
+
+# Environment Variables / Secrets
+.env
+.env.*
+!.env.example
+
+# Database
+*.db
+
+# Node
+node_modules/
+
+# Build files
+dist/
+build/
+
+# IDE
+.vscode/
+
+# Logs
+*.log
