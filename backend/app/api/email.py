@@ -8,6 +8,7 @@ from app.services.risk_engine import calculate_risk
 from app.services.header_forensics import analyze_email_headers
 from app.services.email_authentication import extract_authentication_results
 from app.services.ai_phishing_analyzer import analyze_phishing_intent
+from app.services.social_engineering_analyzer import analyze_social_engineering
 
 
 router = APIRouter(
@@ -57,10 +58,7 @@ def analyze_email(email: EmailData):
     # 2. Domain Analysis
     # --------------------------------
 
-    domain_result = analyze_domain(
-        email.sender
-    )
-
+    domain_result = analyze_domain(email.sender)
     domain_risk = domain_result["domain_risk"]
 
     # --------------------------------
@@ -79,7 +77,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
 
     url_result = analyze_urls(text)
-
     url_risk = url_result["overall_risk"]
 
     # --------------------------------
@@ -87,7 +84,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
 
     if email.raw_email:
-
         raw_email_bytes = email.raw_email.encode(
             "utf-8",
             errors="ignore"
@@ -98,7 +94,6 @@ def analyze_email(email: EmailData):
         )
 
     else:
-
         header_result = {
             "status": "NOT_AVAILABLE",
             "risk": 0,
@@ -131,7 +126,20 @@ def analyze_email(email: EmailData):
     ]
 
     # --------------------------------
-    # 8. Base Risk Engine
+    # 8. Social Engineering Analysis
+    # --------------------------------
+
+    social_engineering_result = analyze_social_engineering(
+        subject=email.subject,
+        body=email.body
+    )
+
+    social_engineering_risk = social_engineering_result[
+        "social_engineering_score"
+    ]
+
+    # --------------------------------
+    # 9. Base Risk Engine
     # --------------------------------
 
     risk_result = calculate_risk(
@@ -144,7 +152,7 @@ def analyze_email(email: EmailData):
     risk_score = risk_result["final_score"]
 
     # --------------------------------
-    # 9. Add Header Forensics Risk
+    # 10. Add Header Forensics Risk
     # --------------------------------
 
     header_risk = header_result.get(
@@ -158,7 +166,7 @@ def analyze_email(email: EmailData):
     )
 
     # --------------------------------
-    # 10. Add Authentication Risk
+    # 11. Add Authentication Risk
     # --------------------------------
 
     risk_score = min(
@@ -167,7 +175,7 @@ def analyze_email(email: EmailData):
     )
 
     # --------------------------------
-    # 11. Add AI Phishing Risk
+    # 12. Add AI Phishing Risk
     # --------------------------------
 
     risk_score = min(
@@ -176,29 +184,33 @@ def analyze_email(email: EmailData):
     )
 
     # --------------------------------
-    # 12. Final Threat Classification
+    # 13. Add Social Engineering Risk
+    # --------------------------------
+
+    risk_score = min(
+        risk_score + social_engineering_risk,
+        100
+    )
+
+    # --------------------------------
+    # 14. Final Threat Classification
     # --------------------------------
 
     if risk_score >= 70:
         threat_level = "HIGH"
-
     elif risk_score >= 40:
         threat_level = "MEDIUM"
-
     else:
         threat_level = "LOW"
 
     # --------------------------------
-    # 13. Final Response
+    # 15. Final Response
     # --------------------------------
 
     return {
         "sender": email.sender,
-
         "risk_score": risk_score,
-
         "threat_level": threat_level,
-
         "detected_indicators": detected_indicators,
 
         "domain_analysis": domain_result,
@@ -213,17 +225,15 @@ def analyze_email(email: EmailData):
 
         "ai_phishing_analysis": phishing_result,
 
+        "social_engineering_analysis": social_engineering_result,
+
         "risk_analysis": {
             **risk_result,
-
             "header_risk": header_risk,
-
             "authentication_risk": authentication_risk,
-
             "phishing_risk": phishing_risk,
-
+            "social_engineering_risk": social_engineering_risk,
             "final_score": risk_score,
-
             "threat_level": threat_level
         }
     }
