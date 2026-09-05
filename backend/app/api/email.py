@@ -6,6 +6,7 @@ from app.services.sender_analyzer import analyze_sender
 from app.services.url_analyzer import analyze_urls
 from app.services.risk_engine import calculate_risk
 from app.services.header_forensics import analyze_email_headers
+from app.services.email_authentication import extract_authentication_results
 
 
 router = APIRouter(
@@ -25,9 +26,9 @@ class EmailData(BaseModel):
 @router.post("/analyze")
 def analyze_email(email: EmailData):
 
-    # =========================================================
-    # LAYER 1: KEYWORD DETECTION
-    # =========================================================
+    # --------------------------------
+    # 1. Keyword Detection
+    # --------------------------------
 
     suspicious_keywords = [
         "urgent",
@@ -51,9 +52,9 @@ def analyze_email(email: EmailData):
         100
     )
 
-    # =========================================================
-    # LAYER 2: DOMAIN ANALYSIS
-    # =========================================================
+    # --------------------------------
+    # 2. Domain Analysis
+    # --------------------------------
 
     domain_result = analyze_domain(
         email.sender
@@ -61,9 +62,9 @@ def analyze_email(email: EmailData):
 
     domain_risk = domain_result["domain_risk"]
 
-    # =========================================================
-    # LAYER 3: SENDER / REPLY-TO ANALYSIS
-    # =========================================================
+    # --------------------------------
+    # 3. Sender / Reply-To Analysis
+    # --------------------------------
 
     sender_result = analyze_sender(
         email.sender,
@@ -72,17 +73,17 @@ def analyze_email(email: EmailData):
 
     sender_risk = sender_result["risk"]
 
-    # =========================================================
-    # LAYER 4: URL ANALYSIS
-    # =========================================================
+    # --------------------------------
+    # 4. URL Intelligence
+    # --------------------------------
 
     url_result = analyze_urls(text)
 
     url_risk = url_result["overall_risk"]
 
-    # =========================================================
-    # LAYER 5: HEADER FORENSICS
-    # =========================================================
+    # --------------------------------
+    # 5. Header Forensics
+    # --------------------------------
 
     if email.raw_email:
 
@@ -103,9 +104,21 @@ def analyze_email(email: EmailData):
             "message": "Raw email headers were not provided"
         }
 
-    # =========================================================
-    # LAYER 6: RISK ENGINE
-    # =========================================================
+    # --------------------------------
+    # 6. SPF / DKIM / DMARC Analysis
+    # --------------------------------
+
+    authentication_result = extract_authentication_results(
+        email.raw_email or ""
+    )
+
+    authentication_risk = authentication_result[
+        "overall_risk"
+    ]
+
+    # --------------------------------
+    # 7. Base Risk Engine
+    # --------------------------------
 
     risk_result = calculate_risk(
         keyword_risk=keyword_risk,
@@ -116,34 +129,47 @@ def analyze_email(email: EmailData):
 
     risk_score = risk_result["final_score"]
 
-    threat_level = risk_result["threat_level"]
+    # --------------------------------
+    # 8. Add Header Forensics Risk
+    # --------------------------------
 
-    # =========================================================
-    # HEADER RISK ADDITION
-    # =========================================================
+    header_risk = header_result.get(
+        "risk",
+        0
+    )
 
-    if header_result.get("risk", 0) > 0:
+    risk_score = min(
+        risk_score + header_risk,
+        100
+    )
 
-        risk_score = min(
-            risk_score + header_result["risk"],
-            100
-        )
+    # --------------------------------
+    # 9. Add Authentication Risk
+    # --------------------------------
 
-        if risk_score >= 70:
-            threat_level = "HIGH"
+    risk_score = min(
+        risk_score + authentication_risk,
+        100
+    )
 
-        elif risk_score >= 40:
-            threat_level = "MEDIUM"
+    # --------------------------------
+    # 10. Final Threat Classification
+    # --------------------------------
 
-        else:
-            threat_level = "LOW"
+    if risk_score >= 70:
+        threat_level = "HIGH"
 
-    # =========================================================
-    # FINAL SECURITY ANALYSIS
-    # =========================================================
+    elif risk_score >= 40:
+        threat_level = "MEDIUM"
+
+    else:
+        threat_level = "LOW"
+
+    # --------------------------------
+    # 11. Final Response
+    # --------------------------------
 
     return {
-
         "sender": email.sender,
 
         "risk_score": risk_score,
@@ -160,13 +186,17 @@ def analyze_email(email: EmailData):
 
         "header_forensics": header_result,
 
+        "email_authentication": authentication_result,
+
         "risk_analysis": {
             **risk_result,
-            "header_risk": header_result.get(
-                "risk",
-                0
-            ),
+
+            "header_risk": header_risk,
+
+            "authentication_risk": authentication_risk,
+
             "final_score": risk_score,
+
             "threat_level": threat_level
         }
     }
