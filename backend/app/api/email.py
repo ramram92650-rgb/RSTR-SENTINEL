@@ -10,6 +10,7 @@ from app.services.email_authentication import extract_authentication_results
 from app.services.ai_phishing_analyzer import analyze_phishing_intent
 from app.services.social_engineering_analyzer import analyze_social_engineering
 from app.services.threat_correlation_engine import correlate_threats
+from app.services.forensic_attack_story import generate_attack_story
 
 
 router = APIRouter(
@@ -32,7 +33,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 1. Keyword Detection
     # --------------------------------
-
     suspicious_keywords = [
         "urgent",
         "verify",
@@ -58,14 +58,15 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 2. Domain Analysis
     # --------------------------------
+    domain_result = analyze_domain(
+        email.sender
+    )
 
-    domain_result = analyze_domain(email.sender)
     domain_risk = domain_result["domain_risk"]
 
     # --------------------------------
     # 3. Sender / Reply-To Analysis
     # --------------------------------
-
     sender_result = analyze_sender(
         email.sender,
         email.reply_to
@@ -76,15 +77,17 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 4. URL Intelligence
     # --------------------------------
+    url_result = analyze_urls(
+        text
+    )
 
-    url_result = analyze_urls(text)
     url_risk = url_result["overall_risk"]
 
     # --------------------------------
     # 5. Header Forensics
     # --------------------------------
-
     if email.raw_email:
+
         raw_email_bytes = email.raw_email.encode(
             "utf-8",
             errors="ignore"
@@ -95,6 +98,7 @@ def analyze_email(email: EmailData):
         )
 
     else:
+
         header_result = {
             "status": "NOT_AVAILABLE",
             "risk": 0,
@@ -104,7 +108,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 6. SPF / DKIM / DMARC Analysis
     # --------------------------------
-
     authentication_result = extract_authentication_results(
         email.raw_email or ""
     )
@@ -116,7 +119,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 7. AI Phishing Analysis
     # --------------------------------
-
     phishing_result = analyze_phishing_intent(
         subject=email.subject,
         body=email.body
@@ -129,7 +131,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 8. Social Engineering Analysis
     # --------------------------------
-
     social_engineering_result = analyze_social_engineering(
         subject=email.subject,
         body=email.body
@@ -142,7 +143,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 9. Base Risk Engine
     # --------------------------------
-
     risk_result = calculate_risk(
         keyword_risk=keyword_risk,
         domain_risk=domain_risk,
@@ -155,7 +155,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 10. Add Header Forensics Risk
     # --------------------------------
-
     header_risk = header_result.get(
         "risk",
         0
@@ -169,7 +168,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 11. Add Authentication Risk
     # --------------------------------
-
     risk_score = min(
         risk_score + authentication_risk,
         100
@@ -178,7 +176,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 12. Add AI Phishing Risk
     # --------------------------------
-
     risk_score = min(
         risk_score + phishing_risk,
         100
@@ -187,7 +184,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 13. Add Social Engineering Risk
     # --------------------------------
-
     risk_score = min(
         risk_score + social_engineering_risk,
         100
@@ -196,7 +192,6 @@ def analyze_email(email: EmailData):
     # --------------------------------
     # 14. Threat Correlation
     # --------------------------------
-
     correlation_result = correlate_threats(
         domain_result=domain_result,
         sender_result=sender_result,
@@ -208,24 +203,43 @@ def analyze_email(email: EmailData):
     )
 
     # --------------------------------
-    # 15. Final Threat Classification
+    # 15. Forensic Attack Story
     # --------------------------------
+    forensic_attack_story = generate_attack_story(
+        domain_result=domain_result,
+        sender_result=sender_result,
+        url_result=url_result,
+        header_result=header_result,
+        authentication_result=authentication_result,
+        phishing_result=phishing_result,
+        social_engineering_result=social_engineering_result,
+        correlation_result=correlation_result
+    )
 
+    # --------------------------------
+    # 16. Final Threat Classification
+    # --------------------------------
     if risk_score >= 70:
+
         threat_level = "HIGH"
+
     elif risk_score >= 40:
+
         threat_level = "MEDIUM"
+
     else:
+
         threat_level = "LOW"
 
     # --------------------------------
-    # 16. Final Response
+    # 17. Final Response
     # --------------------------------
-
     return {
+
         "sender": email.sender,
 
         "risk_score": risk_score,
+
         "threat_level": threat_level,
 
         "detected_indicators": detected_indicators,
@@ -246,16 +260,27 @@ def analyze_email(email: EmailData):
 
         "threat_correlation": correlation_result,
 
+        "forensic_attack_story": forensic_attack_story,
+
         "risk_analysis": {
+
             **risk_result,
+
             "header_risk": header_risk,
+
             "authentication_risk": authentication_risk,
+
             "phishing_risk": phishing_risk,
+
             "social_engineering_risk": social_engineering_risk,
+
             "correlation_score": correlation_result[
                 "correlation_score"
             ],
+
             "final_score": risk_score,
+
             "threat_level": threat_level
+
         }
     }
